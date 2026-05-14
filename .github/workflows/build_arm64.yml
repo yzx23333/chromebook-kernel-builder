@@ -561,8 +561,7 @@ jobs:
     runs-on: ubuntu-24.04
     if: |
       always() &&
-      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'push' && github.ref == 'refs/heads/next')) &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.resolve-version.result == 'success' &&
       needs.generate-matrix.outputs.skip != 'true'
 
