@@ -317,6 +317,8 @@ jobs:
       # docker-options.cfg, additional-options-generic.cfg, etc.
       # --------------------------------------------------------
       - name: Clone kernel-config-options
+        env:
+          KERNEL_SERIES: ${{ needs.resolve-version.outputs.kernel_series }}
         run: |
           KCO_URL=$(grep "^ARM64_KERNEL_CONFIG_OPTIONS_URL=" configs/kernel_versions.conf \
                     | cut -d= -f2-)
@@ -331,18 +333,39 @@ jobs:
           echo "ARM64_KCO_DIR=${KCO_DIR}" >> "$GITHUB_ENV"
 
           # Check for patch subdir - naming varies by repo (misc.cbm, misc.rkc etc.)
-          for subdir in misc.cbm misc.rkc misc.rk3 misc; do
-            PATCH_SUBDIR="${EXT_DIR}/${subdir}/patches/v${KERNEL_SERIES}"
-            if [[ -d "$PATCH_SUBDIR" ]]; then
-              COUNT=$(find "$PATCH_SUBDIR" -name '*.patch' | wc -l)
-              echo "External patch dir: $PATCH_SUBDIR ($COUNT patches)"
-              echo "ARM64_EXT_PATCH_SUBDIR=${PATCH_SUBDIR}" >> "$GITHUB_ENV"
-              break
-            fi
-          done
-          if [[ -z "${ARM64_EXT_PATCH_SUBDIR:-}" ]]; then
-            echo "WARNING: no patch subdir found for v${KERNEL_SERIES} in $EXT_DIR"
-            find "$EXT_DIR" -maxdepth 3 -type d -name "patches" | sort || true
+          # NOTE: uses ARM64_EXT_DIR exported by the previous step via GITHUB_ENV
+          # (a bare EXT_DIR here is unset - that bug silently skipped all
+          # external patches). Falls back to the nearest lower version dir if
+          # the exact series has no patches upstream yet (e.g. v6.19 -> v6.18).
+          FOUND=""
+          if [[ -n "${ARM64_EXT_DIR:-}" ]]; then
+            for subdir in misc.cbm misc.rkc misc.rk3 misc; do
+              BASE="${ARM64_EXT_DIR}/${subdir}/patches"
+              [[ -d "$BASE" ]] || continue
+              PATCH_SUBDIR="${BASE}/v${KERNEL_SERIES}"
+              if [[ ! -d "$PATCH_SUBDIR" ]]; then
+                NEAREST=$( { ls -1 "$BASE"; echo "v${KERNEL_SERIES}"; } \
+                           | grep '^v[0-9]' | sort -V \
+                           | grep -B99 "^v${KERNEL_SERIES}\$" \
+                           | grep -v "^v${KERNEL_SERIES}\$" | tail -1 )
+                if [[ -n "$NEAREST" ]]; then
+                  echo "NOTE: no patches/v${KERNEL_SERIES} upstream - falling back to ${NEAREST}"
+                  PATCH_SUBDIR="${BASE}/${NEAREST}"
+                fi
+              fi
+              if [[ -d "$PATCH_SUBDIR" ]]; then
+                COUNT=$(find "$PATCH_SUBDIR" -name '*.patch' | wc -l)
+                echo "External patch dir: $PATCH_SUBDIR ($COUNT patches)"
+                echo "ARM64_EXT_PATCH_SUBDIR=${PATCH_SUBDIR}" >> "$GITHUB_ENV"
+                FOUND="yes"
+                break
+              fi
+            done
+          fi
+          if [[ -z "$FOUND" ]]; then
+            echo "WARNING: no patch subdir found for v${KERNEL_SERIES} in ${ARM64_EXT_DIR:-<unset>}"
+            [[ -n "${ARM64_EXT_DIR:-}" ]] && \
+              find "$ARM64_EXT_DIR" -maxdepth 3 -type d -name "patches" | sort || true
           fi
 
       # --------------------------------------------------------

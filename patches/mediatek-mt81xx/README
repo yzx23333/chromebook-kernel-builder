@@ -1,0 +1,11 @@
+Local patches for mediatek-mt81xx builds.
+
+mt81xx-pmdomain-v6.19.patch
+  Rebase of hexdump0815's misc.cbm/patches/v6.18/mt81xx-pmdomain.patch
+  (GENPD_FLAG_NO_STAY_ON) onto the reworked 6.19 mtk-pm-domains driver.
+  Only needed when building kernel >= 6.19; the stock v6.18 patch fails
+  there because the driver gained the DIRECT_CTL/HWV split.
+
+  Not enabled by default: hardware_map.conf esche patch_dir is "none"
+  while DEFAULT_SERIES_ARM64=6.18. Set patch_dir to mediatek-mt81xx
+  when moving to 6.19+.

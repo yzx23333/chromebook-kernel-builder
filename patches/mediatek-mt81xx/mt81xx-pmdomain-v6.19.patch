@@ -1,0 +1,15 @@
+rebase of hexdump0815's misc.cbm/patches/v6.18/mt81xx-pmdomain.patch onto v6.19
+(driver gained the DIRECT_CTL/HWV split, so the original hunk no longer applies)
+
+diff --git a/drivers/pmdomain/mediatek/mtk-pm-domains.c b/drivers/pmdomain/mediatek/mtk-pm-domains.c
+--- a/drivers/pmdomain/mediatek/mtk-pm-domains.c
++++ b/drivers/pmdomain/mediatek/mtk-pm-domains.c
+@@ -854,6 +854,8 @@
+ 		/* HW-Voter code can be invoked in atomic context */
+ 		pd->genpd.flags |= GENPD_FLAG_IRQ_SAFE;
+ 	}
++
++	pd->genpd.flags |= GENPD_FLAG_NO_STAY_ON;
+ 
+ 	/*
+ 	 * Initially turn on all domains to make the domains usable
