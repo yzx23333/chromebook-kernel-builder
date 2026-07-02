@@ -693,3 +693,28 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  cleanup-old-releases:
+    name: Prune releases older than newest 6
+    needs: release
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'schedule'
+    permissions:
+      contents: write
+    steps:
+      - name: Delete old arm64 releases and tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # arm64 tags end in -chromebook-arm64-<8-digit-date>; the x86_64
+          # workflow's tags (-chromebook-<date>) are NOT matched here.
+          # "|| true" keeps the step green when grep matches nothing
+          # (e.g. no releases yet, or a future tag-scheme change).
+          TAGS=$(gh release list -R "$REPO" --limit 200 --json tagName -q '.[].tagName' \
+                   | grep -E -- '-chromebook-arm64-[0-9]{8}$' || true)
+          echo "$TAGS" | tail -n +7 | while read -r tag; do
+            [[ -z "$tag" ]] && continue
+            echo "Deleting release + tag: $tag"
+            gh release delete "$tag" -R "$REPO" --cleanup-tag -y
+          done
+          echo "Done - newest 6 arm64 releases retained"
