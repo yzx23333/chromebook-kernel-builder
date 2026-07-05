@@ -564,7 +564,15 @@ jobs:
                    | grep -E -- '-chromebook-[0-9]{8}$' || true)
           echo "$TAGS" | tail -n +7 | while read -r tag; do
             [[ -z "$tag" ]] && continue
-            echo "Deleting release + tag: $tag"
-            gh release delete "$tag" -R "$REPO" --cleanup-tag -y
+            echo "Deleting release: $tag"
+            if gh release delete "$tag" -R "$REPO" -y; then
+              # Tag ref may already be gone (manual git tag deletion, or
+              # draft releases which never create a ref) - don't fail on 422.
+              gh api -X DELETE "repos/$REPO/git/refs/tags/$tag" \
+                >/dev/null 2>&1 && echo "  tag deleted" \
+                || echo "  tag ref already absent"
+            else
+              echo "  WARN: could not delete release $tag - continuing"
+            fi
           done
           echo "Done - newest 6 x86_64 releases retained"
