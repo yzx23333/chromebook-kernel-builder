@@ -1,7 +1,9 @@
 # Chromebook Custom Kernel Builder
 
-A layered, per-device kernel build system for x86_64 and ARM64 (aarch64)
-Chromebooks running any Debian-based Linux distribution.
+A layered kernel build system for x86_64 and ARM64 (aarch64) Chromebooks
+running any Debian-based Linux distribution. x86_64 builds are per-device;
+ARM64 builds are per device *family* — one kernel whose FIT image carries
+all family DTBs, with depthcharge selecting the right one at boot.
 
 x86_64 builds are designed to work alongside
 [WeirdTreeThing/chromebook-linux-audio](https://github.com/WeirdTreeThing/chromebook-linux-audio)
@@ -30,8 +32,11 @@ subsystem initialize correctly on boot.
 
 **MediaTek MT8183 — e.g., HP Chromebook 11MK G9 EE (esche):**
 ARM64 Chromebooks using depthcharge require a FIT image (kernel + device
-tree blobs) packed into a signed kpart. An initramfs is also needed so
-the system can find USB storage before the rootfs mount times out.
+tree blobs) packed into a signed kpart. There is no initramfs: USB storage
+and the btrfs root filesystem are built into the kernel, `rootwait` covers
+USB enumeration, and `root=` must use a kernel-resolvable form
+(`PARTUUID=`/`PARTLABEL=` — filesystem `LABEL=` needs an initramfs and
+will panic).
 
 These configs are not guaranteed to be perfect for every board or use
 case — they are a community-maintained starting point. Testing and
@@ -150,7 +155,11 @@ Layer 10 — ARM64 COMMON FIXES (our additions, applied LAST)
 Layer 11 — DEVICE (per board codename, optional)
   configs/device/<codename>.cfg
   Only options absent from or wrong in hexdump's full stack.
-  Keep this minimal.
+  Keep this minimal. NOTE: arm64 family builds pass the family name
+  here, so per-codename overlays no longer apply to arm64 — family-wide
+  options belong in the platform fragment (Layer 9). A device that truly
+  needs different options needs its own platform value in
+  hardware_map.conf.
 ```
 
 Fallback: if `ARM64_KERNEL_CONFIG_OPTIONS_URL` is not set, the pipeline
@@ -173,7 +182,8 @@ chromebook-kernel-builder/
 │   │   ├── arm64-common-fixes.cfg       ← ARM64: fixes for hexdump pipeline (PR candidates)
 │   │   └── mediatek-mt81xx.cfg          ← ARM64: placeholder (populate to override hexdump base)
 │   ├── cmdline/
-│   │   └── chromebook-kukui.cmdline ← Kernel cmdline for MT8183 kpart
+│   │   ├── mediatek-mt81xx.cmdline  ← Kernel cmdline for mt81xx family kpart
+│   │   └── chromebook-kukui.cmdline ← Fallback cmdline
 │   ├── platform/
 │   │   ├── stoney-ridge.cfg             ← AMD Stoneyridge (TREEYA360/GRUNT)
 │   │   ├── amd-grunt.cfg                ← AMD GRUNT family
@@ -186,8 +196,7 @@ chromebook-kernel-builder/
 │       ├── aleena.cfg               ← Acer CB315-2H (DA7219 codec)
 │       ├── treeya.cfg               ← Lenovo 300e Gen2 AMD (RT5682 codec)
 │       ├── relm.cfg                 ← CTL NL61 (RT5650 codec)
-│       ├── setzer.cfg               ← HP Chromebook 11 G5 EE (RT5650 codec)
-│       └── esche.cfg                ← HP Chromebook 11MK G9 EE (MT8183)
+│       └── setzer.cfg               ← HP Chromebook 11 G5 EE (RT5650 codec)
 
 ├── patches/
 │   └── stoney-ridge/                ← Platform patches if needed
@@ -258,9 +267,9 @@ no build — this prevents every commit from triggering a full kernel build.
 |---|---|
 | `[build:all]` | Build all platforms, default kernel version |
 | `[build:stoney-ridge]` | Build one platform, default kernel version |
-| `[build:esche]` | Build one device (arm64), default kernel version |
+| `[build:esche]` | Build the family containing that device (arm64) |
 | `[build:all][kernel:6.12]` | Build all, resolve latest 6.12.x |
-| `[build:esche][kernel:6.12.80]` | Build one device, exact kernel version |
+| `[build:esche][kernel:6.12.80]` | Build one family, exact kernel version |
 | `[build:stoney-ridge][kernel:6.19.6]` | Build one platform, exact version |
 
 The `[kernel:x.y]` tag resolves the latest point release in that series.
@@ -283,16 +292,19 @@ Builds run automatically every Sunday — x86_64 at 02:00 UTC, ARM64 at
 ### Workflows
 
 - **build.yml** — x86_64 Chromebooks, produces `.deb` packages
-- **build_arm64.yml** — ARM64 Chromebooks (MT8183), produces a signed
-  kpart tarball for use with velvet-os
+- **build_arm64.yml** — ARM64 Chromebooks, one build per device family
+  (mt81xx, rk33xx), each producing a signed kpart tarball for velvet-os
 
 ---
 
-## ARM64 / MediaTek MT8183 (velvet-os)
+## ARM64 device families (velvet-os)
 
 ARM64 builds target [velvet-os](https://github.com/velvet-os/velvet-os.github.io)
-images. The GitHub Actions workflow produces a `.tar.gz` containing the
-signed kpart, Image, DTBs, and kernel modules.
+images. The GitHub Actions workflow produces one `.tar.gz` per device
+family containing the signed kpart, Image, all family DTBs, and kernel
+modules. The FIT image inside the kpart carries every DTB the family's
+`DTB_PREFIX` globs match, and depthcharge selects the correct one by
+compatible string — so one tarball boots every family member.
 
 On-device kernel management is handled by
 [velvet-tools](https://github.com/velvet-os/velvet-tools), which
@@ -301,13 +313,21 @@ two depthcharge kernel partitions.
 
 ### Supported devices
 
-| Codename | Device | SoC |
-|---|---|---|
-| esche | HP Chromebook 11MK G9 EE | MT8183 |
+| Family | Codename | Device | SoC | DTB glob |
+|---|---|---|---|---|
+| mt81xx | esche | HP Chromebook 11MK G9 EE | MT8183 | mt8183-kukui-* |
+| mt81xx | oak | Samsung Chromebook Plus | MT8173 | mt8173-elm-* |
+| rk33xx | kevin | Samsung Chromebook Plus | RK3399 | rk3399-gru-* |
+| rk33xx | bob | Asus Chromebook Flip C101PA | RK3399 | rk3399-gru-* |
 
-Other kukui-family boards (Acer 311, Lenovo Duet, Lenovo 10e) share the
-same MT8183 platform config and DTBs and should work with minimal changes.
-Community testing reports are welcome — see [Contributing](#contributing).
+Because DTBs are collected by glob, the family tarball implicitly covers
+every board those globs match — all kukui variants (Acer 311, Lenovo
+Duet, Lenovo 10e, ...), hana (Lenovo N23), and the gru boards — not just
+the codenames listed. A device only needs its own `hardware_map.conf`
+row to be targetable by `[build:<codename>]` filters or to add a new
+DTB glob to its family; boards sharing an existing glob boot the
+existing tarball as-is. Testing reports welcome — see
+[Contributing](#contributing).
 
 ### Installing a new kernel on velvet-os
 
@@ -317,25 +337,26 @@ installation instructions.
 
 **Tarball naming convention:**
 ```
-<kver>-<dtb-prefix>-<codename>-velvet-os-<date>-r<N>.tar.gz
+linux-<kver>-<date>-r<N>.tar.gz
 
 Example:
-7.0.3-mt8183-kukui-esche-velvet-os-20260506-r47.tar.gz
+linux-7.0.3-velvet-mt81xx-20260506-r47.tar.gz
 ```
 
-The kernel version string inside the tarball follows this pattern:
+`<kver>` is the kernel release string (`uname -r`) and already encodes
+the family:
 ```
-<kver>-chromebook-<dtb-prefix>-velvet-os
+<x.y.z>-velvet-<family>
 
 Example:
-7.0.3-chromebook-mt8183-kukui-velvet-os
+7.0.3-velvet-mt81xx
 ```
 
 **1. Download the tarball** from the [Releases](../../releases) page and
 extract it to the root of your velvet-os install:
 
 ```bash
-sudo tar xzf 7.0.3-mt8183-kukui-esche-velvet-os-<date>-r<N>.tar.gz -C /
+sudo tar xzf linux-7.0.3-velvet-mt81xx-<date>-r<N>.tar.gz -C /
 ```
 
 This places the kernel Image, DTBs, modules, and kpart under `/boot` and
@@ -348,12 +369,12 @@ sudo vtlist
 ```
 
 Look for the newly extracted kernel — it will appear as:
-`7.0.3-chromebook-mt8183-kukui-velvet-os`
+`7.0.3-velvet-mt81xx`
 
 **3. Build and flash the kpart:**
 
 ```bash
-sudo vtbuild 7.0.3-chromebook-mt8183-kukui-velvet-os
+sudo vtbuild 7.0.3-velvet-mt81xx
 ```
 
 `vtbuild` rebuilds the signed kpart incorporating the correct cmdline
