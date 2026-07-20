@@ -306,7 +306,7 @@ jobs:
             libssl-dev libelf-dev libncurses-dev \
             libdw-dev dwarves pahole \
             kmod wget curl git xz-utils \
-            ccache liblz4-tool u-boot-tools vboot-kernel-utils
+            ccache lz4 liblz4-dev u-boot-tools vboot-kernel-utils
 
       - name: Download kernel source
         env:
