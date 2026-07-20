@@ -12,8 +12,8 @@
 #   lib/modules/${kver}/
 #
 # No initrd - boots directly to PARTUUID root (noinitrd in cmdline).
-# Designed for native ubuntu-24.04-arm runners. Also cross-compiles from
-# x86_64 if CROSS_COMPILE=aarch64-linux-gnu- is set in the environment.
+# Uses Clang/LLVM for both native ARM64 and x86_64 cross-compilation. The
+# latter targets aarch64-linux-gnu via CROSS_COMPILE.
 #
 # Usage:
 #   ./scripts/build_kernel_arm64.sh <platform> <codename> <kernel-full-version> <dtb-prefix>
@@ -59,12 +59,12 @@ echo "==> Codename:      $CODENAME"
 echo "==> Kernel:        $KVER_FULL"
 
 # ── Detect native vs cross-compile ───────────────────────────────────────────
+MAKE_ARGS=(ARCH=arm64 LLVM=1 LLVM_IAS=1)
 if [[ "$(uname -m)" == "aarch64" ]]; then
-    echo "==> Native arm64 build"
-    CROSS_COMPILE_ARG=""
+    echo "==> Native arm64 build with Clang/LLVM"
 else
-    echo "==> Cross-compiling from $(uname -m)"
-    CROSS_COMPILE_ARG="CROSS_COMPILE=aarch64-linux-gnu-"
+    echo "==> Cross-compiling from $(uname -m) with Clang/LLVM"
+    MAKE_ARGS+=(CROSS_COMPILE=aarch64-linux-gnu-)
 fi
 
 cd "$KSRC"
@@ -98,9 +98,9 @@ chmod +x "${SCRIPT_DIR}/merge_kernel_config_arm64.sh"
 # ── Build ─────────────────────────────────────────────────────────────────────
 NCPUS=$(nproc)
 echo "==> Building with ${NCPUS} CPUs..."
-make ARCH=arm64 ${CROSS_COMPILE_ARG} -j"${NCPUS}" Image dtbs modules
+make "${MAKE_ARGS[@]}" -j"${NCPUS}" Image dtbs modules
 
-kver=$(make ARCH=arm64 ${CROSS_COMPILE_ARG} kernelrelease)
+kver=$(make "${MAKE_ARGS[@]}" kernelrelease)
 echo "==> Kernel version: ${kver}"
 
 # ── Stage into a temporary tree ───────────────────────────────────────────────
@@ -110,7 +110,7 @@ trap 'rm -rf "$STAGE"' EXIT
 BOOT="${STAGE}/boot"
 mkdir -p "${BOOT}"
 
-make ARCH=arm64 ${CROSS_COMPILE_ARG} \
+make "${MAKE_ARGS[@]}" \
     INSTALL_MOD_PATH="${STAGE}" \
     INSTALL_MOD_STRIP=1 \
     modules_install

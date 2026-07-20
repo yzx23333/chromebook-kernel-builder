@@ -293,10 +293,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ccache-${{ matrix.platform }}-${{ needs.resolve-version.outputs.kernel_full }}
+          key: ccache-clang-${{ matrix.platform }}-${{ needs.resolve-version.outputs.kernel_full }}
           restore-keys: |
-            ccache-${{ matrix.platform }}-${{ needs.resolve-version.outputs.kernel_series }}.
-            ccache-${{ matrix.platform }}-
+            ccache-clang-${{ matrix.platform }}-${{ needs.resolve-version.outputs.kernel_series }}.
+            ccache-clang-${{ matrix.platform }}-
 
       - name: Install build dependencies
         run: |
@@ -306,7 +306,8 @@ jobs:
             libssl-dev libelf-dev libncurses-dev \
             libdw-dev dwarves pahole \
             kmod wget curl git xz-utils \
-            ccache lz4 liblz4-dev u-boot-tools vboot-kernel-utils
+            ccache clang llvm lld \
+            lz4 liblz4-dev u-boot-tools vboot-kernel-utils
 
       - name: Download kernel source
         env:
@@ -514,7 +515,9 @@ jobs:
           LOCAL_VERSION="-${{ matrix.family }}"
           cd "/var/tmp/kernel-build/linux-${KERNEL_FULL}"
           time make ARCH=arm64 \
-            CC="ccache gcc" \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CC="ccache clang" \
             LOCALVERSION="${LOCAL_VERSION}" \
             KBUILD_BUILD_USER="build-user" \
             KBUILD_BUILD_HOST="build-host" \
@@ -542,7 +545,8 @@ jobs:
           FAMILY="${{ matrix.family }}"
           CODENAMES="${{ matrix.codenames }}"
           PLATFORM="${{ matrix.platform }}"
-          kver=$(make -C "$KSRC" ARCH=arm64 LOCALVERSION="${LOCAL_VERSION}" \
+          kver=$(make -C "$KSRC" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
+                 CC="ccache clang" LOCALVERSION="${LOCAL_VERSION}" \
                  --no-print-directory kernelrelease)
           echo "Packaging: $kver"
 
@@ -550,7 +554,7 @@ jobs:
           BOOT="${STAGE}/boot"
           mkdir -p "${BOOT}"
 
-          make -C "$KSRC" ARCH=arm64 \
+          make -C "$KSRC" ARCH=arm64 LLVM=1 LLVM_IAS=1 CC="ccache clang" \
             INSTALL_MOD_PATH="${STAGE}" INSTALL_MOD_STRIP=1 modules_install
 
           cp "${KSRC}/.config"               "${BOOT}/config-${kver}"

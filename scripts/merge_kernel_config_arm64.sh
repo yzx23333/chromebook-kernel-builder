@@ -59,6 +59,7 @@ log() { echo "[merge_config_arm64] $*"; }
 
 cd "$KERNEL_SRC"
 
+MAKE_ARGS=(ARCH=arm64 LLVM=1 LLVM_IAS=1)
 KMERGE="${KERNEL_SRC}/scripts/kconfig/merge_config.sh"
 KCO_DIR="${ARM64_KCO_DIR:-}"
 EXT_DIR="${ARM64_EXT_DIR:-}"
@@ -89,7 +90,7 @@ if [[ -n "$KCO_DIR" ]]; then
 
     # Step 1: Start from ARM64 defconfig
     log "Starting from ARM64 defconfig..."
-    make ARCH=arm64 defconfig
+    make "${MAKE_ARGS[@]}" defconfig
 
     # Build fragment list in hexdump's exact order
     FRAGMENTS=()
@@ -147,7 +148,7 @@ if [[ -n "$KCO_DIR" ]]; then
     fi
 
     log "Running olddefconfig..."
-    make ARCH=arm64 olddefconfig
+    make "${MAKE_ARGS[@]}" olddefconfig
 
 # =============================================================================
 # Fallback pipeline: no kernel-config-options repo available
@@ -182,7 +183,7 @@ else
     fi
 
     log "Running olddefconfig..."
-    make ARCH=arm64 olddefconfig
+    make "${MAKE_ARGS[@]}" olddefconfig
 
     # Apply external special options in fallback mode
     if [[ -n "$MISC_OPTIONS_DIR" ]]; then
@@ -192,7 +193,7 @@ else
         if [[ -f "$ADD_CFG" && -x "$KMERGE" ]]; then
             ARCH=arm64 "${KMERGE}" -m -r .config "$ADD_CFG"
             [[ -f ".config.new" ]] && mv .config.new .config
-            make ARCH=arm64 olddefconfig
+            make "${MAKE_ARGS[@]}" olddefconfig
         fi
         if [[ -f "$RM_CFG" ]]; then
             SC="${KERNEL_SRC}/scripts/config"
@@ -205,7 +206,7 @@ else
                     "$SC" --disable "${BASH_REMATCH[1]#CONFIG_}"
                 fi
             done < "$RM_CFG"
-            make ARCH=arm64 olddefconfig
+            make "${MAKE_ARGS[@]}" olddefconfig
         fi
     fi
 fi
@@ -222,7 +223,7 @@ if [[ -f "$PLATFORM_FRAG" ]]; then
         ARCH=arm64 "${KMERGE}" -m -r .config "$PLATFORM_FRAG"
         [[ -f ".config.new" ]] && mv .config.new .config
     fi
-    make ARCH=arm64 olddefconfig
+    make "${MAKE_ARGS[@]}" olddefconfig
 else
     log "INFO: no platform fragment for '$PLATFORM'"
 fi
@@ -235,7 +236,7 @@ if [[ -f "$COMMON_FIXES" ]]; then
         ARCH=arm64 "${KMERGE}" -m -r .config "$COMMON_FIXES"
         [[ -f ".config.new" ]] && mv .config.new .config
     fi
-    make ARCH=arm64 olddefconfig
+    make "${MAKE_ARGS[@]}" olddefconfig
 else
     log "INFO: no arm64-common-fixes.cfg found - skipping"
 fi
@@ -248,7 +249,7 @@ if [[ -f "$DEVICE_FRAG" ]]; then
         ARCH=arm64 "${KMERGE}" -m -r .config "$DEVICE_FRAG"
         [[ -f ".config.new" ]] && mv .config.new .config
     fi
-    make ARCH=arm64 olddefconfig
+    make "${MAKE_ARGS[@]}" olddefconfig
 else
     log "INFO: no device overlay for '$CODENAME'"
 fi
