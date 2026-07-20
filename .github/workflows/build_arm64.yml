@@ -2,12 +2,12 @@ name: Build ARM64 Chromebook Kernels
 
 on:
   # Run weekly on Sunday at 04:00 UTC (offset from x86_64 job at 02:00)
-  schedule:
-    - cron: '0 4 * * 0'
+  #schedule:
+  #  - cron: '0 4 * * 0'
 
   # Run on push to main when commit message contains [build:arm64] or [build:all]
-  push:
-    branches: [ main, next ]
+  #push:
+  #  branches: [ main, next ]
 
   # Allow manual trigger with optional overrides
   workflow_dispatch:
@@ -34,7 +34,7 @@ jobs:
   # ============================================================
   resolve-version:
     name: Resolve kernel version
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       kernel_series: ${{ steps.resolve.outputs.kernel_series }}
       kernel_full:   ${{ steps.resolve.outputs.kernel_full }}
@@ -108,7 +108,7 @@ jobs:
   # ============================================================
   generate-matrix:
     name: Generate build matrix
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: resolve-version
     outputs:
       matrix: ${{ steps.gen.outputs.matrix }}
@@ -274,7 +274,7 @@ jobs:
     name: Build ${{ matrix.family }} (${{ matrix.platform }})
     needs: [ resolve-version, generate-matrix ]
     if: needs.generate-matrix.outputs.skip != 'true'
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
@@ -306,7 +306,7 @@ jobs:
             libssl-dev libelf-dev libncurses-dev \
             libdw-dev dwarves pahole \
             kmod wget curl git xz-utils \
-            ccache liblz4-tool u-boot-tools vboot-kernel-utils
+            ccache lz4 liblz4-dev u-boot-tools vboot-kernel-utils
 
       - name: Download kernel source
         env:
@@ -511,11 +511,14 @@ jobs:
         run: |
           export CCACHE_DIR=~/.ccache
           ccache -s
-          LOCAL_VERSION="-velvet-${{ matrix.family }}"
+          LOCAL_VERSION="-${{ matrix.family }}"
           cd "/var/tmp/kernel-build/linux-${KERNEL_FULL}"
           time make ARCH=arm64 \
             CC="ccache gcc" \
             LOCALVERSION="${LOCAL_VERSION}" \
+            KBUILD_BUILD_USER="build-user" \
+            KBUILD_BUILD_HOST="build-host" \
+            KCFLAGS="-O3 -march=armv8-a" \
             INSTALL_MOD_STRIP=1 \
             -j$(nproc) \
             Image dtbs modules
@@ -639,7 +642,7 @@ jobs:
   release:
     name: Create release
     needs: [ resolve-version, generate-matrix, build ]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     if: |
       always() &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
@@ -715,21 +718,21 @@ jobs:
 
             ### Installation (velvet-os + velvet-tools)
 
-            Tarball naming: `linux-<kver>-<date>-r<N>.tar.gz` where `<kver>` is `<x.y.z>-velvet-<family>` - one tarball per device family; the FIT image carries all family DTBs and the bootloader selects the right one automatically
-            Kernel version string: `<x.y.z>-velvet-<family>`
+            Tarball naming: `linux-<kver>-<date>-r<N>.tar.gz` where `<kver>` is `<x.y.z>-<family>` - one tarball per device family; the FIT image carries all family DTBs and the bootloader selects the right one automatically
+            Kernel version string: `<x.y.z>-<family>`
 
             ```bash
             sudo tar xzf linux-<kver>-<date>-r<N>.tar.gz -C /
             sudo vtlist
             # note the kernel version listed, then:
-            sudo vtbuild <x.y.z>-velvet-<family>
+            sudo vtbuild <x.y.z>-<family>
             sudo reboot
             ```
 
             Example for the mt81xx family (esche, oak):
             ```bash
-            sudo tar xzf linux-7.0.3-velvet-mt81xx-20260506-r47.tar.gz -C /
-            sudo vtbuild 7.0.3-velvet-mt81xx
+            sudo tar xzf linux-7.0.3-mt81xx-20260506-r47.tar.gz -C /
+            sudo vtbuild 7.0.3-mt81xx
             sudo reboot
             ```
 
@@ -754,7 +757,7 @@ jobs:
   cleanup-old-releases:
     name: Prune releases older than newest 6
     needs: release
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     if: github.event_name == 'schedule'
     permissions:
       contents: write
